@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+		<title>Quiet Cove - cozy fishing game</title>
+		<meta name="description" content="Quiet Cove: a calm fishing and sailing game. 399 real fish species, a small boat and a quiet sea. Plays in the browser.">
+		<meta property="og:title" content="Quiet Cove - cozy fishing game">
+		<meta property="og:description" content="A calm fishing and sailing game: 399 real fish species, a small boat and a quiet sea.">
+		<meta property="og:image" content="index.png">
+		<meta property="og:type" content="website">
+		<meta name="theme-color" content="#0f2a40">
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: #0f2a40;
+	overflow: hidden;
+	touch-action: none;
+	font-family: 'Nunito', 'Noto Sans', 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #242424;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+
+/* Start screen: the game is downloaded and started only after a tap. A tap is what lets the browser
+   play sound, and on a phone it lets the page go fullscreen in landscape. */
+.qc-overlay {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+	padding: 1.5rem;
+	box-sizing: border-box;
+	background: linear-gradient(180deg, #6f9dc6 0%, #3f6f9c 60%, #2b5780 100%);
+	z-index: 10;
+}
+
+#qc-start h1 {
+	font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+	font-weight: 500;
+	font-size: clamp(2.2rem, 9vmin, 4.2rem);
+	margin: 0 0 0.4rem 0;
+	color: #16304a;
+}
+
+#qc-start p {
+	margin: 0.35rem 0;
+	color: #16304a;
+	font-size: clamp(0.95rem, 3.4vmin, 1.15rem);
+	max-width: 34rem;
+}
+
+#qc-start .qc-small {
+	opacity: 0.75;
+	font-size: clamp(0.8rem, 2.8vmin, 0.95rem);
+}
+
+#qc-play {
+	margin: 1.3rem 0 0.9rem 0;
+	min-width: 13rem;
+	min-height: 4rem;
+	padding: 0.6rem 2.2rem;
+	border: 0;
+	border-radius: 1.8rem;
+	background: #f4f1e8;
+	color: #16304a;
+	font: inherit;
+	font-size: clamp(1.3rem, 5vmin, 1.7rem);
+	box-shadow: 0 0.5rem 1.2rem rgba(0, 20, 40, 0.28);
+	cursor: pointer;
+}
+
+#qc-play:active {
+	transform: scale(0.97);
+}
+
+/* Phone held upright while the game runs: the game is landscape only. */
+#qc-rotate {
+	display: none;
+	background: #0f2a40;
+	color: #f4f1e8;
+	font-size: clamp(1.1rem, 5vmin, 1.5rem);
+	z-index: 20;
+}
+
+#qc-rotate .qc-icon {
+	font-size: 3.2rem;
+	margin-bottom: 0.6rem;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+	body.qc-started #qc-rotate {
+		display: flex;
+	}
+}
+
+/* Loading screen: while the game downloads, starts, and while it loads a scene (the game calls
+   window.qcLoader). Only transform and opacity are animated: the browser keeps such animations
+   moving on its own even when the game is busy and cannot draw a frame. */
+#qc-loader {
+	display: none;
+	opacity: 0;
+	transition: opacity 0.35s ease;
+	overflow: hidden;
+	z-index: 15;
+}
+
+#qc-loader.qc-on {
+	display: flex;
+}
+
+#qc-loader.qc-visible {
+	opacity: 1;
+}
+
+.qc-boat {
+	width: clamp(72px, 17vmin, 124px);
+	transform-origin: 50% 90%;
+	animation: qc-bob 2.6s ease-in-out infinite;
+	will-change: transform;
+}
+
+@keyframes qc-bob {
+	0%, 100% { transform: translateY(0) rotate(-4deg); }
+	50% { transform: translateY(-8px) rotate(4deg); }
+}
+
+.qc-loader-title {
+	font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+	font-weight: 500;
+	font-size: clamp(1.8rem, 7vmin, 3.2rem);
+	color: #16304a;
+	margin-top: 0.3rem;
+}
+
+.qc-bar {
+	width: min(22rem, 70vw);
+	height: 0.5rem;
+	margin-top: 1rem;
+	border-radius: 0.25rem;
+	background: rgba(22, 48, 74, 0.2);
+	overflow: hidden;
+}
+
+#qc-bar-fill {
+	width: 100%;
+	height: 100%;
+	border-radius: 0.25rem;
+	background: #f4f1e8;
+	transform-origin: 0 50%;
+	transform: scaleX(0);
+	transition: transform 0.25s linear;
+	will-change: transform;
+}
+
+.qc-bar.qc-busy #qc-bar-fill {
+	width: 40%;
+	transition: none;
+	animation: qc-slide 1.3s ease-in-out infinite;
+}
+
+@keyframes qc-slide {
+	0% { transform: translateX(-110%); }
+	100% { transform: translateX(260%); }
+}
+
+.qc-loader-text {
+	min-height: 1.4em;
+	margin-top: 0.7rem;
+	color: #16304a;
+	opacity: 0.85;
+	font-size: clamp(0.9rem, 3vmin, 1.05rem);
+}
+
+.qc-waves {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 24vh;
+	pointer-events: none;
+}
+
+.qc-wave {
+	position: absolute;
+	left: -50%;
+	bottom: 0;
+	width: 200%;
+	height: 100%;
+	background-repeat: repeat-x;
+	background-size: 25% 100%;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100' preserveAspectRatio='none'%3E%3Cpath d='M0 42 Q25 12 50 42 T100 42 T150 42 T200 42 V100 H0 Z' fill='%23f4f1e8'/%3E%3C/svg%3E");
+	will-change: transform;
+}
+
+.qc-wave.qc-a {
+	opacity: 0.45;
+	animation: qc-drift 9s linear infinite;
+}
+
+.qc-wave.qc-b {
+	bottom: -4vh;
+	opacity: 0.3;
+	animation: qc-drift 15s linear infinite reverse;
+}
+
+@keyframes qc-drift {
+	from { transform: translateX(0); }
+	to { transform: translateX(25%); }
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<div id="qc-start" class="qc-overlay">
+			<h1 id="qc-title">Quiet Cove</h1>
+			<p id="qc-about">A calm fishing game: a small boat, a quiet sea and 399 real fish species.</p>
+			<button id="qc-play" type="button">Play</button>
+			<p id="qc-size" class="qc-small">The first load is about 140 MB.</p>
+			<p id="qc-keys" class="qc-small">On a computer: arrows or WASD to move, Shift to go faster, mouse for the rest, Esc for the menu.</p>
+		</div>
+
+		<div id="qc-rotate" class="qc-overlay">
+			<div class="qc-icon">&#8635;</div>
+			<div id="qc-rotate-text">Turn your phone sideways.<br>Tap here for full screen.</div>
+		</div>
+
+		<div id="qc-loader" class="qc-overlay" aria-live="polite">
+			<svg class="qc-boat" viewBox="0 0 120 120" aria-hidden="true">
+				<path d="M60 14 L60 84" stroke="#16304a" stroke-width="4" stroke-linecap="round"/>
+				<path d="M64 20 L100 78 L64 78 Z" fill="#f4f1e8"/>
+				<path d="M56 30 L28 78 L56 78 Z" fill="#fbe7b0"/>
+				<path d="M18 86 L102 86 L90 106 L30 106 Z" fill="#7a4b2a"/>
+				<path d="M18 86 L102 86" stroke="#5c3720" stroke-width="4" stroke-linecap="round"/>
+			</svg>
+			<div class="qc-loader-title" id="qc-loader-title">Quiet Cove</div>
+			<div class="qc-bar" id="qc-bar"><div id="qc-bar-fill"></div></div>
+			<div class="qc-loader-text" id="qc-loader-text"></div>
+			<div class="qc-waves"><div class="qc-wave qc-a"></div><div class="qc-wave qc-b"></div></div>
+		</div>
+
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":100401276,"index.wasm":37700666},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const PAGE_TITLE = document.title;
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+	const startOverlay = document.getElementById('qc-start');
+	const rotateOverlay = document.getElementById('qc-rotate');
+	const canvas = document.getElementById('canvas');
+	const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+	const ru = (navigator.language || '').toLowerCase().startsWith('ru');
+
+	if (ru) {
+		document.documentElement.lang = 'ru';
+		document.getElementById('qc-title').textContent = 'Тихая Бухта';
+		document.getElementById('qc-about').textContent = 'Спокойная рыбалка: лодка, тихое море и 399 настоящих видов рыб.';
+		document.getElementById('qc-play').textContent = 'Играть';
+		document.getElementById('qc-size').textContent = 'Первая загрузка — около 140 МБ.';
+		document.getElementById('qc-keys').textContent = 'На компьютере: стрелки или WASD — движение, Shift — быстрее, мышь — всё остальное, Esc — меню.';
+		document.getElementById('qc-rotate-text').innerHTML = 'Поверните телефон горизонтально.<br>Коснитесь, чтобы открыть на весь экран.';
+		document.getElementById('qc-loader-title').textContent = 'Тихая Бухта';
+	}
+
+	// Loading screen. The game shows and hides it through window.qcLoader (first frame ready,
+	// scene change); while the files download it shows the real progress.
+	const loader = document.getElementById('qc-loader');
+	const loaderBar = document.getElementById('qc-bar');
+	const loaderFill = document.getElementById('qc-bar-fill');
+	const loaderText = document.getElementById('qc-loader-text');
+	const loaderWords = ru
+		? { load: 'Загружаем игру', start: 'Поднимаем паруса…', scene: 'Плывём дальше…' }
+		: { load: 'Loading the game', start: 'Setting sail…', scene: 'Sailing on…' };
+	let loaderOff = 0;
+	let loaderSafety = 0;
+	window.qcLoader = {
+		show: function (kind) {
+			clearTimeout(loaderOff);
+			clearTimeout(loaderSafety);
+			loaderBar.classList.add('qc-busy');
+			loaderText.textContent = kind === 'start' ? loaderWords.start : loaderWords.scene;
+			loader.classList.add('qc-on');
+			void loader.offsetWidth; // so that the fade starts from transparent
+			loader.classList.add('qc-visible');
+			// never trap the player behind the screen if the game does not report back
+			loaderSafety = setTimeout(window.qcLoader.hide, 40000);
+		},
+		progress: function (current, total) {
+			const part = total > 0 ? Math.min(1, current / total) : 0;
+			loaderBar.classList.remove('qc-busy');
+			loaderFill.style.transform = 'scaleX(' + part + ')';
+			loaderText.textContent = loaderWords.load + (total > 0 ? ' — ' + Math.round(part * 100) + ' %' : '…');
+		},
+		hide: function () {
+			clearTimeout(loaderSafety);
+			loader.classList.remove('qc-visible');
+			loaderOff = setTimeout(function () { loader.classList.remove('qc-on'); }, 400);
+		},
+	};
+
+	// How many frames per second this screen shows, measured while the start screen is up.
+	// The game's world runs 60 times a second; on faster screens the game draws at most 60 frames.
+	(function () {
+		let frames = 0;
+		let since = 0;
+		function tick(now) {
+			if (!since) {
+				since = now;
+			}
+			frames += 1;
+			if (now - since >= 500) {
+				window.qcRefresh = Math.round((frames - 1) * 1000 / (now - since));
+				frames = 1;
+				since = now;
+			}
+			if (!document.body.classList.contains('qc-started')) {
+				requestAnimationFrame(tick);
+			}
+		}
+		requestAnimationFrame(tick);
+	}());
+	if (coarse) {
+		document.getElementById('qc-keys').textContent = ru
+			? 'Игра откроется на весь экран в горизонтальном положении.'
+			: 'The game opens full screen in landscape.';
+	}
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		window.qcLoader.hide();
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	// On a phone: full screen, then landscape lock (the lock works only in full screen).
+	// Both may be refused by the browser - then the "turn your phone" screen does the job.
+	async function goFullscreen() {
+		if (!coarse) {
+			return;
+		}
+		try {
+			const el = document.documentElement;
+			if (!document.fullscreenElement && el.requestFullscreen) {
+				await el.requestFullscreen({ navigationUI: 'hide' });
+			}
+			if (screen.orientation && screen.orientation.lock) {
+				await screen.orientation.lock('landscape');
+			}
+		} catch (err) {
+			// not allowed here: nothing to do
+		}
+	}
+
+	// The engine puts the internal project name into the tab title; keep the public one.
+	const titleNode = document.querySelector('title');
+	if (titleNode && window.MutationObserver) {
+		new MutationObserver(() => {
+			if (document.title !== PAGE_TITLE) {
+				document.title = PAGE_TITLE;
+			}
+		}).observe(titleNode, { childList: true });
+	}
+
+	// A lost graphics context otherwise looks like a silent black screen.
+	canvas.addEventListener('webglcontextlost', () => {
+		const box = document.createElement('div');
+		box.className = 'qc-overlay';
+		box.style.zIndex = '30';
+		box.style.background = '#0f2a40';
+		box.style.color = '#f4f1e8';
+		box.textContent = ru
+			? 'Графика остановилась (браузеру не хватило памяти видеокарты). Обновите страницу.'
+			: 'Graphics stopped (the browser ran out of video memory). Please reload the page.';
+		document.body.appendChild(box);
+	});
+
+	rotateOverlay.addEventListener('click', goFullscreen);
+
+	function startGame() {
+		startOverlay.remove();
+		document.body.classList.add('qc-started');
+		// Our own loading screen instead of the engine splash. It stays through the download and
+		// the start of the engine; the game hides it when its first frame is ready.
+		loader.classList.add('qc-on', 'qc-visible');
+		window.qcLoader.progress(0, 0);
+		let downloaded = false;
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (downloaded) {
+					return;
+				}
+				if (current > 0 && total > 0) {
+					window.qcLoader.progress(current, total);
+					if (current >= total) {
+						downloaded = true;
+						window.qcLoader.show('start');
+					}
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+			if (!downloaded) {
+				window.qcLoader.show('start');
+			}
+		}, displayFailureNotice);
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		startOverlay.remove();
+		const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+		displayFailureNotice(missingMsg + missing.join('\n'));
+	} else {
+		document.getElementById('qc-play').addEventListener('click', () => {
+			goFullscreen();
+			startGame();
+		}, { once: true });
+	}
+}());
+		</script>
+	</body>
+</html>
+
